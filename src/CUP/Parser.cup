@@ -1,0 +1,308 @@
+/* YAPSL.2: implementazione di un parser con CUP */
+
+package Parser;
+import java_cup.runtime.*;
+import Visitor.*;
+import Visitable.*;
+import Tree.TreeNode;
+import java.util.ArrayList;
+
+parser code {:
+	
+	private String nomefile = "output.c";
+	
+	public void setNameFile(String nomefile){
+		this.nomefile = nomefile;
+	}
+
+    public void syntax_error(Symbol token){
+		System.err.println("Syntax error - Token: " + token.sym + " Line: " + token.left + " Column: " + token.right);
+	}
+:}
+
+/* Terminali (token restituiti dall'analizzatore lessicale) */
+terminal String		HEAD, START, INT, BOOL, DOUBLE, DEF, LPAR, RPAR, COLON, LGPAR, RGPAR, SEMI, READ, WRITE, ASSIGN, IF, THEN, ELSE,
+					WHILE, DO, COMMA, STRING_CONST, UMINUS, PLUS, MINUS, TIMES, DIV, NOT, AND, OR, GT, GE, LT, LE, EQ; 		
+terminal Boolean	TRUE, FALSE;
+terminal Integer	INT_CONST, NAME; 		
+terminal Double		DOUBLE_CONST;
+
+/* Non Terminali */
+non terminal TreeNode						Programma, Var_decl, Type, Def_decl, Body, Comp_stat, Stat,
+											Simple_stat, Expr, Arith_op, Bool_expr, Bool_op, Rel_op, Vars;
+non terminal ArrayList<TreeNode<Object>>	Decls, Statements, Var_decls, Types, Exprs, Out_values, Par_decls;
+										
+/* Precedenze */
+precedence left 	PLUS, MINUS;
+precedence left 	TIMES, DIV;
+precedence left 	UMINUS;
+precedence left 	OR, AND;
+precedence left 	COMMA;
+precedence nonassoc ELSE; /* Due occorrenze consecutive di ELSE genera un errore */
+
+/* Regole grammaticali */
+Programma::=		HEAD Decls:decls START Statements:statements						{:	
+																							ArrayList<TreeNode<Object>> node_decl = decls;
+																							TreeNode<Object> left = new Decls("Decls", node_decl);
+																								
+																							ArrayList<TreeNode<Object>> node_statements = statements;
+																							TreeNode<Object> right = new Statements("Statements", node_statements);
+																								
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(left);
+																							node.add(right);
+																							RESULT = new ProgramOp("ProgramOp", node);
+																							
+																							Visitor v = new SemanticVisitor();
+																							RESULT.accept(v);
+																							v = new CVisitor();
+																							v.fileOut(nomefile);
+																							RESULT.accept(v);
+																						:};
+
+Decls::=			Var_decl:var Decls:decls											{:
+  																							ArrayList<TreeNode<Object>> node = decls;
+  																							node.add(var);
+  																							RESULT = node;
+																						:}																						
+					| Def_decl:def Decls:decls											{: 
+					  																		ArrayList<TreeNode<Object>> node = decls;
+  																							node.add(def);
+  																							RESULT = node;
+																						:}
+					| /*Epsilon*/														{: 	RESULT = new ArrayList<TreeNode<Object>>();; :}																			
+					;
+
+Statements::= 		Stat:stat Statements:statements										{:
+																							ArrayList<TreeNode<Object>> node = statements;
+  																							node.add(stat);
+  																							RESULT = node;
+																						:}
+					| Stat:stat															{: 	
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(stat);
+																							RESULT = node; 
+																						:}										
+					;
+
+Var_decl::=			Type:type Vars:vars SEMI											{:																							
+																							ArrayList<TreeNode<Object>> node  = new ArrayList<TreeNode<Object>>();;
+																							node.add(type);
+																							node.add(vars); 
+																							RESULT = new VarDeclOp("VarDeclOp", node);
+																						:};
+
+Type::= 			INT																	{: 	RESULT = new IntegerType("IntegerType", "int"); :}													
+					| BOOL																{: 	RESULT = new BooleanType("BooleanType", "boolean"); :}										
+					| DOUBLE															{: 	RESULT = new DoubleType("DoubleType",  "double"); :}											
+					;
+					
+Vars::=				NAME:name COMMA Vars:vars											{:
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(new Name("Name", name));
+																							node.add(vars);
+																							RESULT = new VarOp("VarOp", node);
+																						:}
+					| NAME:name															{: 	
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(new Name("Name", name));
+																							RESULT = new VarOp("VarOp", node);
+																						:}
+					;
+
+Types::=			Type:type COMMA Types:types											{: 	
+																							ArrayList<TreeNode<Object>> node = types;
+																							node.add(type);
+																							RESULT = types;
+																						:}
+					| Type:type															{: 	
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(type);
+																							RESULT = node; 
+																						:}			
+					;
+					
+Def_decl::=			DEF NAME:name LPAR Var_decls:var_decls RPAR COLON Par_decls:par_decls Body:body		{: 	
+																											TreeNode<Object> left = new VarDecl("VarDecl", var_decls);
+																											
+																											TreeNode<Object> right = new ParDecl("ParDecl", par_decls);
+																											
+																											ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																											node.add(new Name("Name", name));
+																											node.add(left);
+																											node.add(right);  
+																											node.add(body); 
+																											RESULT = new ProDeclOp("ProDeclOp", node); 
+																										:};
+																										
+Var_decls::=		Var_decl:var_dec Var_decls:var_decls								{: 
+																							ArrayList<TreeNode<Object>> node_var_decls = var_decls;
+  																							node_var_decls.add(var_dec);
+  																							RESULT = node_var_decls;
+																						:}
+					| /*Epsilon*/														{: 	RESULT = new ArrayList<TreeNode<Object>>(); :}													
+					;
+					
+Par_decls::=		Var_decl:var_dec Par_decls:par_decls								{: 	ArrayList<TreeNode<Object>> children = par_decls;
+																							children.add(var_dec);
+																							RESULT = par_decls;
+																						:}
+					|Var_decl:var_dec													{: 
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(var_dec);
+																							RESULT = node;
+																						:}
+					;
+					
+Body::=				LGPAR Var_decls:var_decls Statements:statements RGPAR SEMI			{: 	ArrayList<TreeNode<Object>> node_var_decls = var_decls;
+																							TreeNode<Object> left = new VarDecl("VarDecl", node_var_decls);
+																								
+																							ArrayList<TreeNode<Object>> node_statements = statements;
+																							TreeNode<Object> right = new Statements("Statements", node_statements);
+																							
+																							ArrayList<TreeNode<Object>> children = new ArrayList<TreeNode<Object>>();
+																							children.add(left); 
+																							children.add(right); 
+																							RESULT = new BodyOp("BodyOp", children); 
+																						:};
+																						
+Stat::=				Comp_stat:comp_stat													{: 	RESULT = comp_stat; :}
+					| Simple_stat:simple_stat											{: 	RESULT = simple_stat; :}
+					;
+
+Comp_stat::=		LGPAR Statements:statements RGPAR									{: 	ArrayList<TreeNode<Object>> node_statements = statements;
+																							RESULT = new CompStatOp("CompStatOp", node_statements);  
+																						:};
+																						
+Simple_stat::=		Vars:vars READ Types:types SEMI										{: 	
+																							ArrayList<TreeNode<Object>> node_type = types;
+																							TreeNode<Object> right = new Types("Types", node_type);
+																								
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(vars); 
+																							node.add(right); 
+																							RESULT = new ReadOp("ReadOp", node);  
+																						:}									
+					| Out_values:out_values WRITE SEMI									{: 	
+																							ArrayList<TreeNode<Object>> node_out_values = out_values;
+																							TreeNode<Object> left = new WriteOut("WriteOut", node_out_values);
+																								
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(left); 
+																							RESULT = new WriteOp("WriteOp", node);
+																						:}
+					| NAME:name ASSIGN Expr:expr SEMI									{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(new Name("Name", name));
+																							node.add(expr); 
+																							RESULT = new AssignOp("AssignOp", node); 
+																						:}
+					| NAME:name LPAR Exprs:exprs COLON Vars:vars RPAR SEMI				{:	
+																							ArrayList<TreeNode<Object>> expression = exprs;
+																							TreeNode<Object> node_expr = new Exprs("Exprs", expression);
+																						
+																							ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																							node.add(new Name("Name", name));
+																							node.add(node_expr);
+																							node.add(vars);
+																							RESULT = new CallOp("CallOp", node); 
+																						:}
+					| IF LPAR Bool_expr:bool_expr RPAR THEN Comp_stat:comp_stat_1 ELSE Comp_stat:comp_stat_2 SEMI		{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																															node.add(bool_expr);
+																															node.add(comp_stat_1);
+																															node.add(comp_stat_2);  
+																															RESULT = new IfThenElseOp("IfThenElseOp", node); 
+																														:}
+					| IF LPAR Bool_expr:bool_expr RPAR THEN Comp_stat:comp_stat SEMI									{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																															node.add(bool_expr);
+																															node.add(comp_stat);  
+																															RESULT = new IfThenOp("IfThenOp", node); 
+																														:}
+					| WHILE LPAR Bool_expr:bool_expr RPAR DO Comp_stat:comp_stat SEMI									{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																															node.add(bool_expr);
+																															node.add(comp_stat);  
+																															RESULT = new WhileOp("WhileOp", node); 
+																														:}
+					;
+					
+Out_values::=		Expr:expr COMMA Out_values:out_values									{: 	ArrayList<TreeNode<Object>> node_out_values = out_values;
+  																								node_out_values.add(expr);
+  																								RESULT = node_out_values; 
+																							:}
+					| STRING_CONST:str COMMA Out_values:out_values							{: 	ArrayList<TreeNode<Object>> node_out_values = out_values;
+  																								node_out_values.add(new StringConstant("StringConstant", str));
+  																								RESULT = node_out_values;  
+																							:}
+					| Expr:expr																{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(expr);
+																								RESULT = node; 
+																							:}
+					| STRING_CONST:str														{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(new StringConstant("StringConstant", str));
+																								RESULT = node;
+																							:}		
+					;
+					
+Exprs::=			Expr:expr COMMA Exprs:exprs												{:  ArrayList<TreeNode<Object>> node_exprs = exprs;
+  																								exprs.add(expr);
+  																								RESULT = exprs;
+																							:}
+					| Expr:expr																{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(expr);
+																								RESULT = node;
+																							:}
+					;
+					
+Expr::=				INT_CONST:int_const														{: 	RESULT = new IntegerConstant("IntegerConstant", int_const); :}
+					| DOUBLE_CONST:double_const												{: 	RESULT = new DoubleConstant("DoubleConstant", double_const	); :}
+					| Expr:expr_1 Arith_op:arith_op Expr:expr_2								{: 	ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(expr_1);
+																								node.add(expr_2);
+																								node.add(arith_op);  
+																								RESULT = new ExprArithOp("ExprArithOp", node); 
+																							:}
+					| NAME:name																{: 	RESULT = new Name("Name", name); :}
+					| UMINUS Expr:expr														{:  ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(expr);
+																								RESULT = new UminuOp("UminuOp", node);
+																							:}
+					%prec UMINUS	
+					| LPAR Expr:expr RPAR													{: 	RESULT = expr; :}		
+					;
+					
+Arith_op::=			PLUS	 																{: RESULT = new ArithmeticOperator("ArithmeticOperator", "+"); :}
+					| MINUS		 															{: RESULT = new ArithmeticOperator("ArithmeticOperator", "-"); :}	
+					| TIMES		 															{: RESULT = new ArithmeticOperator("ArithmeticOperator", "*"); :}	
+					| DIV																	{: RESULT = new ArithmeticOperator("ArithmeticOperator", "/"); :}	
+					;
+					
+Bool_expr::=		TRUE																	{: 	RESULT = new BoolConstant("BoolConstant", "true"); :}
+					| FALSE																	{: 	RESULT = new BoolConstant("BoolConstant", "false"); :}
+					| Bool_expr:bool_expr_1 Bool_op:bool_op Bool_expr:bool_expr_2			{:  ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(bool_expr_1);
+																								node.add(bool_expr_2);
+																								node.add(bool_op);
+																								RESULT = new BoolOp("BoolOp", node);
+																							:}
+					| NOT Bool_expr:bool_expr												{:  ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(bool_expr);
+																								RESULT = new  NotOp("NotOp", node);
+																							:}
+					| Expr:expr_1 Rel_op:relop Expr:expr_2									{:  ArrayList<TreeNode<Object>> node = new ArrayList<TreeNode<Object>>();
+																								node.add(expr_1);
+																								node.add(expr_2);
+																								node.add(relop);
+																								RESULT = new ExpBoolOp("ExpBoolOp", node);
+																							:}
+					| LPAR Bool_expr:bool_expr RPAR											{: 	RESULT = bool_expr; :}
+					;
+					
+Bool_op::= 			AND																		{: RESULT = new BoolOperator("BoolOperator", "and"); :}
+					| OR																	{: RESULT = new BoolOperator("BoolOperator", "or"); :}
+					;
+					
+Rel_op::= 			GT																		{: RESULT = new RelOp("RelOp", ">"); :}
+					| GE																	{: RESULT = new RelOp("RelOp", ">="); :}
+					| LT																	{: RESULT = new RelOp("RelOp", "<"); :}
+					| LE																	{: RESULT = new RelOp("RelOp", "<="); :}
+					| EQ																	{: RESULT = new RelOp("RelOp", "=="); :}
+					;

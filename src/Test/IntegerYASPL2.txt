@@ -1,0 +1,114 @@
+head
+int a, b, op, continua, scelta;
+
+def somma ( int a , b ;) : int op;
+{ 	
+	op = a + b ;
+};
+
+def moltiplicazione ( int a , b ;) : int op;
+{ 	
+	int i;
+	i = 0;
+	op = 0;
+	
+	while(i < b) do {
+		op = op + a;
+		i = i + 1;
+	};
+};
+
+def divisione ( int a , b ;) : int op;
+{ 	
+	op = a / b ;
+};
+
+def potenza ( int a , b ;) : int op;
+{ 	
+	int i;
+	i = 0;
+	op = 1;
+	
+	while(i < b) do {
+		op = op * a;
+		i = i + 1;
+	};
+};
+
+def fibonacci ( int a ;) : int op;
+{ 	
+	int i, f1, f2;	
+	i = 0;
+	f1 = 0;
+	f2 = 1;
+	
+	if(a == 0)
+		then{
+			op = f1;
+		};
+		
+	if(a == 1)
+		then{
+			op = f2;
+		};
+		
+	while(i < a) do {
+		op = f2 + f1;
+		f1 = f2;
+		f2 = op;
+		i = i + 1;
+	};
+};
+
+start
+
+continua = 0;
+
+while (continua == 0) do {
+	"Inseriscimi due interi: " -> ;
+ 	a, b <- int, int;
+	
+	"Vuoi effettuare la somma?  'Y' = 0 - 'N' = 1 "-> ;
+	scelta <- int;
+	
+	if ( scelta == 0 )
+		then { 
+			somma(a, b: op);
+	}else{
+			"Vuoi effettuare la moltiplicazione? 'Y' = 0 - 'N' = 1 " ->;
+			scelta <- int;
+			
+			if ( scelta == 0 )
+				then { 
+					moltiplicazione(a, b: op);
+			}else{
+				"Vuoi effettuare la divisione? 'Y' = 0 - 'N' = 1 "-> ;
+				scelta <- int;
+				
+				if ( scelta == 0 )
+					then { 
+						divisione(a, b: op);
+				}else{
+					"Vuoi effettuare l'elevazione a potenza? 'Y' = 0 - 'N' = 1 "-> ;
+					scelta <- int;
+					
+					if ( scelta == 0 )
+						then { 
+							potenza(a,b: op);
+						}else{
+							"Vuoi effettuare la successione di Fibonacci? 'Y' = 0 - 'N' = 1 "-> ;
+							scelta <- int;
+							
+							if ( scelta == 0 )
+								then { 
+									fibonacci(a: op);
+								};
+						};
+				};
+			};
+		};
+		
+	"Il risultato e': ", op ->;
+	"Vuoi continuare? 'Y' = 0 - 'N' = 1 " -> ;
+ 	continua <- int;
+ };
